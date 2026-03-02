@@ -244,8 +244,7 @@ class ASCIIGenerator {
                 const pixel    = this.getPixelData(imageData, x, y, img.width);
                 const adjusted = this.applyColorAdjustments(pixel, settings);
                 const brightness = this.getBrightness(adjusted.r, adjusted.g, adjusted.b);
-                let char = this.mapToCharacter(brightness, settings.charSet);
-                if (settings.spacing > 0 && Math.random() * 100 < settings.spacing) char = ' ';
+                const char = this.mapToCharacter(brightness, settings.charSet);
 
                 let color;
                 if (!settings.preserveColor) {
@@ -267,11 +266,12 @@ class ASCIIGenerator {
         };
     }
 
-    renderASCII(asciiResult, container) {
+    renderASCII(asciiResult, container, settings = {}) {
         container.innerHTML = '';
         const wrap = document.createElement('div');
+        const sp = settings.spacing || 0;
         wrap.style.lineHeight = '1';
-        wrap.style.letterSpacing = '0';
+        wrap.style.letterSpacing = sp > 0 ? (sp / 10) + 'px' : '0';
 
         for (const row of asciiResult.data) {
             const line = document.createElement('div');

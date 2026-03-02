@@ -214,7 +214,7 @@ class UIController {
             this.debouncedUpdate({ density: parseInt(e.target.value) });
         });
         this.elements.spacingSlider.addEventListener('input', e => {
-            this.elements.spacingValue.textContent = e.target.value + '%';
+            this.elements.spacingValue.textContent = e.target.value;
             this.debouncedUpdate({ spacing: parseInt(e.target.value) });
         });
         this.elements.charSetSelect.addEventListener('change', e => this.handleCharSetChange(e));
@@ -1012,7 +1012,7 @@ class UIController {
                 if (this.mode === 'ascii') {
                     // Render ASCII for this image
                     const result = this.generator.processImage(entry.img);
-                    this.generator.renderASCII(result, this.elements.asciiOutput);
+                    this.generator.renderASCII(result, this.elements.asciiOutput, this.generator.currentSettings);
                     blob = await this._captureAsciiAsBlob(this.elements.asciiOutput);
                 } else if (this.mode === 'dither') {
                     this.generator.ditherImage(entry.img, this.elements.ditherOutput);
@@ -1069,7 +1069,7 @@ class UIController {
         return new Promise(resolve => {
             requestAnimationFrame(() => {
                 this.currentAsciiResult = this.generator.processImage(this.generator.currentImage);
-                this.generator.renderASCII(this.currentAsciiResult, this.elements.asciiOutput);
+                this.generator.renderASCII(this.currentAsciiResult, this.elements.asciiOutput, this.generator.currentSettings);
                 resolve();
             });
         });

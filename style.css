@@ -303,13 +303,34 @@ body {
 
     .upload-label,
     .upload-default {
-        width: 240px;
+        width: 280px;
+        padding: 18px 24px;
+        gap: 8px;
+    }
+
+    .upload-arrow {
+        margin-top: 6px;
+        margin-bottom: 6px;
+    }
+
+    .upload-main {
+        font-size: 1rem;
+        letter-spacing: 0;
+    }
+
+    .upload-hint + .upload-hint {
+        margin-top: -6px;
+    }
+
+    .upload-default-preview {
+        width: 56px;
+        height: 56px;
     }
 
     .upload-divider {
         flex-direction: row;
-        padding: 20px 0;
-        width: 240px;
+        padding: 12px 0;
+        width: 280px;
     }
 
     .upload-divider-line {
@@ -423,7 +444,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
+    background: rgba(0, 0, 0, 0.8);
     border: 1px dashed var(--border-2);
     color: var(--text-dim);
     cursor: pointer;
@@ -826,16 +847,41 @@ input[type="text"].custom-input:focus {
 }
 
 @media (max-width: 760px) {
+    :root { --bar-h: 88px; }
+
     .settings-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 
     .nav { padding: 0 14px; }
-    .bottom-bar { padding: 0 12px; }
+
+    /* Two-row bottom bar: modes on top, settings + downloads below */
+    .bottom-bar {
+        flex-wrap: wrap;
+        justify-content: center;
+        height: auto;
+        padding: 8px 12px;
+        gap: 6px;
+    }
+
+    .bar-left, .bar-right {
+        display: contents;
+    }
+
+    .mode-toggle {
+        width: 100%;
+    }
+
+    .mode-btn {
+        flex: 1;
+    }
 
     .btn-label { display: none; }
 
     .mode-btn { padding: 6px 8px; font-size: 0.52rem; }
+
+    /* Hide palette source hint on mobile */
+    #paletteHint { display: none; }
 
     /* Gallery strip: thinner on mobile */
     .gallery-strip {
@@ -892,11 +938,9 @@ input[type="text"].custom-input:focus {
         padding: 12px 44px calc(12px + var(--bar-h)) 12px;
     }
 
-    /* Prevent bottom bar overflow */
+    /* Tighter gap on narrow screens */
     .bottom-bar {
         gap: 4px;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
     }
 }
 
