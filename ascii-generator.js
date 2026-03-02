@@ -32,7 +32,8 @@ class ASCIIGenerator {
             glyphRangeEnd: -1,            // 1-based index of last active shape; -1 = all
             glyphMappingMode: 'auto',     // 'auto' | 'manual'
             glyphManualPositions: [],     // 0-1 brightness positions parallel to sorted shapes
-            glyphBackgroundColor: '#ffffff' // background fill for glyph mode output
+            glyphBackgroundColor: '#ffffff', // background fill for glyph mode output
+            glyphRetina: false,              // render at 2x internal resolution for HiDPI
         };
 
         this.charSets = {
@@ -584,19 +585,26 @@ class ASCIIGenerator {
         // Sort shapes: highest coverage first (dense = dark, sparse = light)
         const shapes = [...raw].sort((a, b) => b.coverage - a.coverage);
 
-        // Size canvas to image (capped at 700 px)
-        const maxDim = 700;
+        // Scale for device pixel ratio so canvas pixels map 1:1 to screen pixels.
+        // HD toggle guarantees at least 2× (useful for exports and 1× displays).
+        const dpr   = Math.min(Math.ceil(window.devicePixelRatio || 1), 2);
+        const scale = Math.max(s.glyphRetina ? 2 : 1, dpr);
+        const maxDim = 700 * scale;
         let W = img.naturalWidth  || img.width;
         let H = img.naturalHeight || img.height;
-        if (Math.max(W, H) > maxDim) {
-            const sc = maxDim / Math.max(W, H);
-            W = Math.round(W * sc);
-            H = Math.round(H * sc);
+        // Fit to maxDim (downscale large images) and upscale small ones by
+        // up to `scale` so canvas.width/scale always gives correct CSS size.
+        const fit = Math.min(maxDim / Math.max(W, H), scale);
+        if (fit !== 1) {
+            W = Math.round(W * fit);
+            H = Math.round(H * fit);
         }
         outputCanvas.width  = W;
         outputCanvas.height = H;
 
         const outCtx = outputCanvas.getContext('2d');
+        outCtx.imageSmoothingEnabled = true;
+        outCtx.imageSmoothingQuality = 'high';
         outCtx.fillStyle = s.glyphBackgroundColor || '#ffffff';
         outCtx.fillRect(0, 0, W, H);
 
@@ -616,10 +624,27 @@ class ASCIIGenerator {
         const cols = Math.ceil(W / cellSize);
         const rows = Math.ceil(H / cellSize);
 
-        // Pre-allocate one tinting canvas; reused every cell
+        // Pre-allocate one tinting canvas; reused every cell.
+        // Moderate 2× supersample softens edges without over-sharpening.
         const tintCanvas = document.createElement('canvas');
-        tintCanvas.width = tintCanvas.height = drawSize;
+        const tintRes = Math.min(256, Math.max(drawSize, drawSize * 2));
+        tintCanvas.width = tintCanvas.height = tintRes;
         const tintCtx = tintCanvas.getContext('2d');
+
+        // Pre-render each unique shape at tintRes once.  Drawing from a
+        // cached canvas is a 1:1 pixel copy — no scaling, no re-rasterisation.
+        const shapeCache = new Map();
+        for (const shape of shapes) {
+            if (!shapeCache.has(shape.img)) {
+                const c = document.createElement('canvas');
+                c.width = c.height = tintRes;
+                const ctx = c.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(shape.img, 0, 0, tintRes, tintRes);
+                shapeCache.set(shape.img, c);
+            }
+        }
 
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
@@ -659,8 +684,8 @@ class ASCIIGenerator {
                 }
 
                 // Tint glyph with pixel colour using an offscreen canvas
-                tintCtx.clearRect(0, 0, drawSize, drawSize);
-                tintCtx.drawImage(shape.img, 0, 0, drawSize, drawSize);
+                tintCtx.clearRect(0, 0, tintRes, tintRes);
+                tintCtx.drawImage(shapeCache.get(shape.img), 0, 0);
 
                 if (useColor) {
                     tintCtx.globalCompositeOperation = 'source-in';
@@ -668,11 +693,11 @@ class ASCIIGenerator {
                         ? this.nearestPaletteColor(adj.r, adj.g, adj.b, s.palette)
                         : `rgb(${adj.r},${adj.g},${adj.b})`;
                     tintCtx.fillStyle = color;
-                    tintCtx.fillRect(0, 0, drawSize, drawSize);
+                    tintCtx.fillRect(0, 0, tintRes, tintRes);
                     tintCtx.globalCompositeOperation = 'source-over';
                 }
 
-                outCtx.drawImage(tintCanvas, cx - drawSize / 2, cy - drawSize / 2);
+                outCtx.drawImage(tintCanvas, cx - drawSize / 2, cy - drawSize / 2, drawSize, drawSize);
             }
         }
     }

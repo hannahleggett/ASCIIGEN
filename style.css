@@ -836,6 +836,38 @@ input[type="text"].custom-input:focus {
     .btn-label { display: none; }
 
     .mode-btn { padding: 6px 8px; font-size: 0.52rem; }
+
+    /* Gallery strip: thinner on mobile */
+    .gallery-strip {
+        width: 42px;
+        padding: 8px 2px calc(8px + var(--bar-h)) 2px;
+    }
+    .gallery-thumb { width: 36px; height: 36px; }
+    .gallery-add-btn { width: 36px; height: 28px; }
+
+    /* ASCII output: less right padding to match thinner gallery */
+    .ascii-output { padding-right: 50px; }
+
+    /* Native scroll for canvas modes on mobile */
+    .stage {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: var(--bar-h);  /* space below content so it isn't hidden by fixed bar */
+    }
+
+    .dither-output {
+        position: relative;
+        top: auto;
+        left: auto;
+        transform: none;
+        margin: auto;
+        flex-shrink: 0;
+        max-height: none;   /* allow vertical scroll instead of constraining */
+    }
+
+    /* Settings panel: allow more height on shorter screens */
+    .settings-panel { max-height: 55vh; }
+    .settings-inner { max-height: 55vh; }
 }
 
 @media (max-width: 460px) {
@@ -846,6 +878,25 @@ input[type="text"].custom-input:focus {
     .bar-btn {
         padding: 7px 10px;
         gap: 0;
+    }
+
+    /* Tighter mode buttons for narrow screens */
+    .mode-btn {
+        padding: 6px 5px;
+        font-size: 0.48rem;
+        letter-spacing: 0.08em;
+    }
+
+    /* ASCII output: tighter padding */
+    .ascii-output {
+        padding: 12px 44px calc(12px + var(--bar-h)) 12px;
+    }
+
+    /* Prevent bottom bar overflow */
+    .bottom-bar {
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
 }
 
@@ -890,10 +941,16 @@ input[type="text"].custom-input:focus {
    ============================================================ */
 .dither-output {
     position: absolute;
-    top: 50%;
+    /* Centre in the visible stage area (offset up by half the bar to avoid overlap) */
+    top: calc(50% - var(--bar-h) / 2);
     left: 50%;
     transform: translate(-50%, -50%);
-    /* keep individual pixels crisp / no bilinear blur */
+    /* Constrain to viewport — keeps canvas visible on small screens */
+    max-width: calc(100% - 16px);
+    max-height: calc(100% - var(--bar-h) - 16px);
+}
+/* Crisp nearest-neighbor scaling — applied by JS for pixel-art modes (dither/pixel/CRT) */
+.dither-output.crisp {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
 }

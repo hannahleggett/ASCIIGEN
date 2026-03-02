@@ -89,6 +89,7 @@ class UIController {
             glyphSizeSlider:    document.getElementById('glyphSizeSlider'),
             glyphSizeValue:     document.getElementById('glyphSizeValue'),
             glyphColorCheckbox: document.getElementById('glyphColorCheckbox'),
+            glyphRetinaCheckbox: document.getElementById('glyphRetinaCheckbox'),
 
             // Glyph mapping controls
             glyphMappingSection:   document.getElementById('glyphMappingSection'),
@@ -297,6 +298,9 @@ class UIController {
         this.elements.glyphColorCheckbox.addEventListener('change', e => {
             this.updateSettings({ glyphUseColor: e.target.checked });
         });
+        this.elements.glyphRetinaCheckbox.addEventListener('change', e => {
+            this.updateSettings({ glyphRetina: e.target.checked });
+        });
         document.getElementById('glyphBgColor').addEventListener('input', e => {
             this.debouncedUpdate({ glyphBackgroundColor: e.target.value });
         });
@@ -437,6 +441,13 @@ class UIController {
             el.classList.toggle('hidden', mode !== 'glyph');
         });
 
+        // Pixel-art modes want nearest-neighbor; glyph vectors need smooth scaling
+        this.elements.ditherOutput.classList.toggle('crisp', mode !== 'glyph');
+        if (mode !== 'glyph') {
+            this.elements.ditherOutput.style.width  = '';
+            this.elements.ditherOutput.style.height = '';
+        }
+
         // Shared size control: only visible in ascii and dither
         if (this.elements.sizeControlGroup) {
             this.elements.sizeControlGroup.classList.toggle('hidden',
@@ -508,6 +519,8 @@ class UIController {
         if (e.button !== 0 || !this.generator.currentImage) return;
         // No panning in ASCII mode
         if (this.mode === 'ascii') return;
+        // On mobile, native scroll handles panning — don't intercept
+        if (window.innerWidth <= 760) return;
         // Don't pan when clicking on interactive elements (buttons, thumbnails, etc.)
         if (e.target.closest('.gallery-strip, .upload-area, button, a, input, select')) return;
 
@@ -562,7 +575,7 @@ class UIController {
     _resetPan() {
         this.pan.offsetX = 0;
         this.pan.offsetY = 0;
-        this.elements.ditherOutput.style.transform = 'translate(-50%, -50%)';
+        this.elements.ditherOutput.style.transform = '';
         this.elements.asciiOutput.scrollLeft = 0;
         this.elements.asciiOutput.scrollTop  = 0;
     }
@@ -1101,10 +1114,42 @@ class UIController {
     renderGlyph() {
         return new Promise(resolve => {
             requestAnimationFrame(() => {
+                const canvas = this.elements.ditherOutput;
                 this.generator.glyphImage(
                     this.generator.currentImage,
-                    this.elements.ditherOutput
+                    canvas
                 );
+                // Match the scale factor used by glyphImage()
+                const dpr   = Math.min(Math.ceil(window.devicePixelRatio || 1), 2);
+                const scale = Math.max(
+                    this.generator.currentSettings.glyphRetina ? 2 : 1, dpr
+                );
+                if (scale > 1) {
+                    let cssW = canvas.width  / scale;
+                    let cssH = canvas.height / scale;
+                    // Fit within the visible stage area (above the bottom bar)
+                    const stage = canvas.parentElement;
+                    if (stage) {
+                        const maxW = stage.clientWidth  - 16;
+                        const isMobile = window.matchMedia('(max-width: 760px)').matches;
+                        if (isMobile) {
+                            // Mobile: only constrain width — let height scroll
+                            const fit = Math.min(1, maxW / cssW);
+                            cssW = Math.round(cssW * fit);
+                            cssH = Math.round(cssH * fit);
+                        } else {
+                            const maxH = stage.clientHeight - 74; // bar-h(58) + padding
+                            const fit  = Math.min(1, maxW / cssW, maxH / cssH);
+                            cssW = Math.round(cssW * fit);
+                            cssH = Math.round(cssH * fit);
+                        }
+                    }
+                    canvas.style.width  = cssW + 'px';
+                    canvas.style.height = cssH + 'px';
+                } else {
+                    canvas.style.width  = '';
+                    canvas.style.height = '';
+                }
                 resolve();
             });
         });
@@ -1287,6 +1332,24 @@ class UIController {
         if (this.mode === 'glyph' && this.generator.currentImage) this.processAndRender();
     }
 
+    /**
+     * If dataUri is an SVG, rewrite its width/height to force the browser to
+     * rasterise at a higher resolution (default 256 px).  Non-SVG URIs pass
+     * through unchanged.
+     */
+    _boostSvgDataUri(dataUri, size = 512) {
+        if (!dataUri.startsWith('data:image/svg+xml')) return dataUri;
+        try {
+            const base64 = dataUri.split(',')[1];
+            let svg = atob(base64);
+            svg = svg.replace(/<svg([^>]*)/, (tag) =>
+                tag.replace(/\bwidth="[\d.]+"/, `width="${size}"`)
+                   .replace(/\bheight="[\d.]+"/, `height="${size}"`)
+            );
+            return 'data:image/svg+xml;base64,' + btoa(svg);
+        } catch { return dataUri; }
+    }
+
     _loadGlyphShape(file) {
         return new Promise(resolve => {
             const reader = new FileReader();
@@ -1297,7 +1360,7 @@ class UIController {
                     resolve({ img, coverage, name: file.name });
                 };
                 img.onerror = () => resolve(null);
-                img.src = e.target.result;
+                img.src = this._boostSvgDataUri(e.target.result);
             };
             reader.onerror = () => resolve(null);
             reader.readAsDataURL(file);
@@ -1352,12 +1415,13 @@ class UIController {
     async _loadDefaultGlyphs() {
         // Inline base64 data URIs — works with file:// protocol, no fetch needed
         const defaults = [
-            { name: 'sparkle-1', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAABiUlEQVR4nO3aTWrCQBiH8f8Ece2qUHRhb+ARUkjW9ib1BuINehRdK+gRcgQXfnTpAQpTEtpFGz9aXopv6vPbOWQxPMw4E1QCAAAAAAAAcCuCvMq28cvnRdflXJNrT6DpCGhEQCMCGhHQiIBGBDQioBEBjQhoREAjAhoR0IiA/zJgvhnUxtJ9Xw75DCjVA7bikxxyGjAZHxkcyiF/AfPXZ8V4ZLvGVNluJGeCu+++GJaSOieeOCjER817hZxIfK28cC5eqVM942glXncFpvv+x+EwrLbobwStpTiR2oXmd0VzA2bffj1rGuOvfX62cEMR0IiAjT5E8uqVbVBdnI/e/c4JK0kzvYWpVvfrv5rixVnIi2wzksL4wjWmdKhO30XvRQ74CVjiIm1UvWGUd7tT4sTTW4i/Ffgp2y1rF+vy4jzvPsgZr6fwrD50bmVej8+ArTCtD7ZdbV3fW7jEHyxvg88t3CAENCKgEQGNCGhEQCMCGhHQiIBGBDQioBEBjQgIAAAAAAAAAPqZdwpCULwVJEX2AAAAAElFTkSuQmCC' },
-            { name: 'sparkle-2', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAC4UlEQVR4Ae2bUWoaURSG/ztGKPQlT4WSFHQFTXcwAYW+ma4gzQqSHbTuoF1BkxU0vhUUtCtodqDQ1PTRl4DQOLf3GPJQRzvWo95D839P5s4E5GPuvef+ZwQIIYQQQshjxMEqtR/+j787eya/awKiggKVUKASClRCgUooUAkFKqFAJRSohAKVUKASClRiU2Da382NHc0ZM4BNgeVyJTc2ekKBS5NlldxYeZLCIEbXwCSdM3gAg9gUmCSN/KBrwCD2BNavD+B9JTfuUUHtewpjGHwC3eniS8kxjGGrz/D6poK7rP/Xe3aSKr48H8AItp7ASfau8J47/wmGsCOw/vM0rHNvi2/0KWrDMxjBxhS+n7rfwqdli+URnD9Ee/8KkYn/BIq8ie9ieXm4v9d9nv5vZOIKlJJF5M0rW4qQsmaSdWNLjCdwuua51eQ9IBJl6kdcE7e/Bk7XO9lJw2awThzOUUqa2y5xtiewdpPCZcfL7bQKRCTKH9F+tpUNZjMCJbuT+EkSFIeX8MmRaqqugsMg7NSXYZXcCr8zwNPbAS6rI6yZYoGzb0k9NgreCmOkr4QClVCgks1tIrehryHRfOJSoNTY/ibiBiGdaIUPV/hV6mF3PIqziawLOXUAZ6F43mymJ2WMzy7QedHDFohTSE8m79cv0vWw407+30J6ltp1OH45yf+07cowLX0Tnf0PiEDcOOshiVl1fZRiGf5NzFgrfh64qkSRV0oOY8f7NgLVaSfO/UsmOAq9kVcWeiM26sDpFAzr2NL4ppXGkq2uXG3YLYy5pExp753ACLZOIlKGFCGZnyFsCZRp6fzFwuvy9BnqCQv2zsLeny++GIJSY9j8tWZ92M+VNVK2tPeqMIbV9wNb+UHfgkGMvt6G/MnCJT0YxKbAUoifZpG+hkFsChyP87mdNIUMwp/8K2Gkr4QClVCgEgpUQoFKKFAJBSqhQCUUqIQClVCgEgokhBBCCCFkBX4D70HUL9Dv+jYAAAAASUVORK5CYII=' },
-            { name: 'sparkle-3', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAD/0lEQVR4Ae2cT07bQBTGv7GpuugmXdJQKZyg9AQkapC6A24AJwBOQHOCwglKT9Cwq0QkzAngBgTxr7tmUXUBtqfz7LYC7AQ74/G8lvlJgLANgY958/ze9zDgcDgcTxcBrnQv5b3PB02WP6sHhxZOQE2cgJo4ATVxAmrCU8D3163MsXbOMQbwFDBEK3Psmd8AQ3gKKG9zxLpZAEN4Cij8PLGcgMURi5lDUrTAEKYCyrzVtgiG8BOwe91W7/MSRgPd8zaYwU9AGa2MP+m1wQx+Anre8oSzG2AGLwEpfKVsTbiCXRgzW4Fy+/Fr/ALX1AefJiWVb2F8WuziuIPB6wAM4LMCQ/mx+MV8ViEPAZcu1lT4rhT/AtnmshfaD2EK3UgePpI8sggM8eLmLfrzI1jE/gqM4u3S4hFSdWx+PrceynYFXPq2oYRYw7TEchPdq01YxF4IL10sqAbBMfQZQcgODuZOYAE7KzDpOHtfUA0N9Yc4zO1i10D9Ak6bNCbTUHupFRHrFZDCNoyPKxYvhZIKiUivUSP1CZgkDBVq+a2qaiARaV+tMbGYTyIrpw38oNsNWW+2FNiD7/XwdXYIg5gVkLorQn4yErJFoJttyJ7K0HswhBkBk64ydVZUycUC0ceM2DKxGqsVkJ1wDxGBeuthMBugIvQFTD0MZfjEtMexNL8zUGgL2Ufs7+uKWVxAGq1IpgOUwS3wBrHX+r3S/g3RxqOaEUJVMfIInvoYixFCJXBQLNyzAj6cDHXc58GkrJvO0sQJqIkTUJNySWQmVKWSbKTDPzS/koxg/A9JJICIztJkghPc+qPpk0hZyJsQUH6Gv2yt4iiPEi3eVR8DXXev4htpMnp85jfSUa9KS9RMKZd6vGRTlnDaTFK9cH+/M0yS2JXettVmgozXTZrwZrMwdUF80VFl02fUjVB7HNmehicY6jOVuheqVhYlpg+mZpS0sAZzO6iBel25pN2uzCRzIV27Q1e/rWnGVEr3O9/rmO5AZ1/WBmmWJk+4mptwS+IRdko5+kUp1JL9qgrkqg3xCHu1cLJPqc1eG7llayqBsD+d9e58B8KbbvaZnLeD5joswmA6K/wAIYYoS7rvVbCC9bAvYDA/goymWEWyZ2vfuwufGenu1WHxJoSyKQevVsEARg3VqHg4ksfLBD4CJjUrdU0eQ13DIHT/wKylX2QVRtYTx134Pcyme/kd4yoUyrwHzXkwgqOptDv+lNwHMxgKGAdjT0nZBzNYPo9qTBiPMGi+BDO4+sJB9pCwVu9OgulTO+RZzsEjMISngB6yq81zK7AMWbHiyOr/xI2Dp4C+nxUrnBmCITyzMOGeYPk0cAJq4gTUxAmoiRPQ4XA4HFPzC4KBR0mSMob2AAAAAElFTkSuQmCC' },
-            { name: 'sparkle-4', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAE4klEQVR4Ae2cTVIbRxTH/z0aIBW8GC8TO67hBDEnkChEVXYmJzA+ga0TBE4AnCD4BOBdyibFcALnBsgJtrOLqmK5ynhm2v16kMsgaZiPnu4nW78Fi25NCf3rdb+Pfj0CHOmcBfAX/7syFnsriH7ogxkeOLKwEGJG4CmgbAVjY34cgiE8BRRJOD4mQjCEqQWKcMLofTCEp4AQ7bGhyaI6h6mAcpK1tcEQfgL+8jZUf4MJMwE6eo4V/ARMks7UOV9ughn8BJTiQc5kB8zguAd2cuba2DwLwAheAm6cb2Hy/jciwPulDhjBS8Dc5XtJisdghAAXyPvG6Vmhz966uI2jlQEYwMcCk/S3wp99t/gETOBhgWR9iTyBlGHBJwbKClc4WCEPC4zxsIR4RMDFCt1bYJm97yoD+N4q/nBbZHVvgWX2vqsENZ41hlsLXH+zCSEPUYt0Dcc/RXCEOwEpoxguvSy5940j0Mfyxaorh+JuCQ8Xd2uLR0iEKjtxtpTdCLjx72P1w7dgilQ+QfeNE69sfwlvnN9XKdtLmGeg9tM1vLj7Fyxi1wJ1sdSr6TSmoooQ4vCyIGsNexZYPtuoBjmVlrdmKz60I6At8UZYFLF5AW2LN8KSiM3ugeQwXIhHUHiTpCf6f2iQ5gTUoYpwI94IEpE8foMhjvklTBnGOwpsJZuanUbgQGUsPdMZi1kBu287Khb73anV5UH7ohA9PP/xCIYwI6B2FKoyYjK7aBKyxpa3Y8LB1BNQL9fv1CFPSsuV1XFjMbxt+HhaR8hqAs68cF9AyxqIqlpkcQFJtP/VmaygY0V+HQJmEEcQ6TOVTx8UfiJ3lpp5sn6U9qVos21txVGeWkRazFYryrNM8bnjyVcxE3WGCvyM1Au/McFuggRVVR55qqKMPmRLefPWAMvDvkD3tcScyjBtsJwd5gLWZC5gTXzdqDNcUEm3DPRVAt3MTU3euk957kQyLr1y8ko7E6kcSez3aSI/jNEpWtKB9B58k2EMcIpYxYZRXhhTBmqAzMRk16tsBiWaF+/j+yQqWrWplspllrmtttA228pLcZRQ6T5uxXtVSl31igm6MSjeUkI671GpQC3hRhgsZymLlOIhZgE25azrrP+9Cc/fZV1Qlekjk81IZuPAP+8d4eOHVZUvPgU3hFqu1IRkuJOruWPN7rmqFYpduEftb3IHx3f30ADNngvrI0Xv0NmS1sVS+WuT/TLzg/XaX2ODeWuHAebNRQZoWkTL4mVfaZuswfIETRQmhFz9uhssCf0DVVhhHNmzLR7hrkt//Z89CM/MzUtKzV7ceQQHuKtIJ/G2KuD2UZfsmkMPjnAnYKQqIDKpbzUi6bm8dOj2TITy0jp5My3d5/eMdVpVwf2hUqu1DZ2vVnnWa8AZlcO9gFnMto/SpDs2471pMLkvfEGVkuJWSI7D9w/AAB4CRtoJlLHCiIP1EXwO1jMrLAaDvW8EHwG1Feqz2Jt4xsX6CGbvjYlvXsZCOg1brsNLwEQdaOc7k0GZ7lEb8BIwcyZRzidOwQyG3VliukjMli/BT0BfTBeJ+pWZwePNRdfpvqaXcF8vuA5wfOc2mMG1wTIaHxLWi6VFYPoaZPlqwiA7B0LwFNDDuLXR9QKGcH0VfH98bC5gcXx9f+0qYslZ1TmP2enSXx72wZBPpjHRIPbAL2QAAAAASUVORK5CYII=' },
-            { name: 'sparkle-5', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAAD1klEQVR4Ae2dX04TQRzHv7Pljwk+9MkEkKScwHICSliMb+AN4ATICZATCCdAT2B9M9KEegLKCWhEim/2QRJQuuP82hCpiNDOzHe3ZT4vhLBtdz/Mb367M/ObKrCJTzR8U5lWIBGBSekoDwYrpM8BW+DoaAEMmo+GVKDOcS5sTBdBgisQpAtLUAAJtsB5MND6GUhwBSrFaYEKKyDBE7j0tWhaRgEc8oiPSyDAE5hgFVSiEgjwBEbRMrisgwBH4OKXFWL4XkEJY45ANUJpDTfJbcIz/gXGpyVzX1FCKpjP9dwK/QtUehdpoqI38IhfgfHpZgp9XzcaRcSNV/CEv2GfF6cFXCZHyAZNjERz+DhZh2P8tEAZTmrpfWQHcz7Jvo9hLj8Cf4zvph66f6PNAIOcl2PcC4wbptPWtGfR3jDn9bzhNKm47QM78rx12M6I1DY+TW3AAW4ESt/SDo+strx/ocp4fLGG8mwTFtgLlGwrCSNrfd59UKgjFy3YZGe7PnDp27q5VTkYSHmCJBa51ZL71T7prwV2Hs8203tE84C0Rh2toTJZ7e1lvTCM4m6gqiYud0ySKd/r6DuPaEuDmctIJLvSpgtTR1qk0mXosXfYe1K7/bArJJPKfKpMCcqslkzMdOYWHo6022iHtxKJn80vNahcExNndcngirLUYoghT2sOH0GgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJUGgJd0rE85GZUVCHshJVeW8+WtxYFdeuaUJjTKUOoS+rKM1WkP+vNlZmXAXUmUJvWqkLj8wmU0g2TE/q6jMVG87qLfVWVLz1i7bGvLVWWht/U9a19HoBymfUrnsrcS3QaEGnWzcV9yfl9kQH782ech7QZ9nTKhq0+KebqMPwhrpVNdIC/Lhvy7m2qveBwpzvhM/rcu/3NaJLB5vQ0Up1Qb3gDLZdW/GST2L+2LDrEt0KK/9dvBB3HifzaIbE7aVqZdwiJ9HucuLNXPXXkeWkIQhlUnO39YXnXrhA2RlkfpINDs49cJC+2TN/VUmSLZ8yBP8b1QYn0grpO2mdgMJ3b3pWXiCMJyVOCkr7RudOO/3rsPZKjNu7KczAGEGBipTC/AIaUC1lU5fKDVvnqFt1mr6wu9gZmTPfd8VzCF9762hG/0BBIgCkyqojL0FAV4IC6wwJoWvQN4ClBNWZgLoECTI2yBHNVCQeQ0OZIFmSpBCi/SP4u9kzrkwNW61F0wvcAWen3MuTMrxSXCzsBC+zSFwnd8QWCe9ELSj+QAAAABJRU5ErkJggg==' },
-            { name: 'square',    src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAYAAACOEfKtAAACKElEQVR4Ae3dPU5CQRSG4TNXYiwssDExaiI70B1ogomd7kBZgbgCdQW6A3UH0JlAAjuQHWCBaElJDDDen8KEcLln8oVCz/cUNncseB2ZoTk4CVX98PLfbX5vSaMy0iyNJMTp4FAsGG2UtUvDAorYCFjyF9qlYQF9dCk2nGsXOu1COfs8kMmsL1aUooq87rwXLdPvwOnsViyZ+CfNMl3A069r8XIlpvhjqQ7rRauK/4WTk9e7NzFrdiLt/W7e0+U7MN15luMlos6ynbh4B6YHRvIeEG9jyjh5lrXofv5gyQJe9Mvp5TG7/5wz3DKuK272IrLek9Z2z5n4aLZCoZ9EaA4DghgQxIAgBgQxIIgBQQwIYkAQA4IYEMSAIAYEMSCIAUEMCGJAEAOCGBDEgCAGBDEgiAFBDAhiQBADghgQxIAgBgQxIIgBQQwIYkAQA4IYEMSAIAYEMSCIAUEMCGJAEAOCGBDEgCAGBDEgiAFBDAhiQBADghgQxIAgBgQxIIgBQQwI+h39lI33PMyGLHJyUT7XjX80ZeIaUh6P8mdnTad34p2ViZUKcbiSqy2enZWnOqjHSx7EPH8j7b3HRU84P7CI80fS2uvlPS4+RNJfjv8CJsWve0m8hH4IbXXYMXW4JPMCW7u1omX6a0zyBmpJMmxRQR8wPX3SI9yA+HUqRiAnQi/STbEgnVCpExawFF8eTVjvaVeGBRyPVd9w8Oe1tlcUsFuxETDAD7GPc2oPq5uTAAAAAElFTkSuQmCC' },
+            { name: 'dot-1',     src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3QgeD0iMjYuMDcyMyIgeT0iMjYuMDcyMyIgd2lkdGg9IjEzLjAzNjEiIGhlaWdodD0iMTMuMDM2MSIgcng9IjYuNTE4MDciIGZpbGw9IiNFQzk0NDEiLz4KPC9zdmc+Cg==' },
+            { name: 'sparkle-1', src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzQyMl8yMzkzMCkiPgo8cGF0aCBkPSJNMzQuMjIwMiAyNC40NDMxQzM0LjIyMDIgMjguMDQyOSAzNy4xMzg1IDMwLjk2MTIgNDAuNzM4MyAzMC45NjEySDY1LjE4MTZDNjYuMDgxNSAzMC45NjEyIDY2LjgxMSAzMS42OTA3IDY2LjgxMSAzMi41OTA2QzY2LjgxMSAzMy40OTA1IDY2LjA4MTUgMzQuMjIgNjUuMTgxNiAzNC4yMkg0MC43MzgzQzM3LjEzODUgMzQuMjIgMzQuMjIwMiAzNy4xMzgyIDM0LjIyMDIgNDAuNzM4VjY1LjE4MDRDMzQuMjIwMiA2Ni4wODAzIDMzLjQ5MDcgNjYuODA5OCAzMi41OTA4IDY2LjgwOThDMzEuNjkwOSA2Ni44MDk4IDMwLjk2MTQgNjYuMDgwMyAzMC45NjE0IDY1LjE4MDRWNDAuNzM4QzMwLjk2MTQgMzcuMTM4MiAyOC4wNDMyIDM0LjIyIDI0LjQ0MzQgMzQuMjJILTcuNjE5OTZlLTA3Qy0wLjg5OTg5IDM0LjIyIC0xLjYyOTM5IDMzLjQ5MDUgLTEuNjI5MzkgMzIuNTkwNkMtMS42MjkzOSAzMS42OTA3IC0wLjg5OTg5IDMwLjk2MTIgLTMuMzUzNDllLTA4IDMwLjk2MTJIMjQuNDQzNEMyOC4wNDMyIDMwLjk2MTIgMzAuOTYxNCAyOC4wNDI5IDMwLjk2MTQgMjQuNDQzMVYtMC4wMDAyNDQ5MDNDMzAuOTYxNCAtMC45MDAxMzUgMzEuNjkwOSAtMS42Mjk2NCAzMi41OTA4IC0xLjYyOTY0QzMzLjQ5MDcgLTEuNjI5NjQgMzQuMjIwMiAtMC45MDAxMzQgMzQuMjIwMiAtMC4wMDAyNDQxNzRWMjQuNDQzMVoiIGZpbGw9IiNFRkE1NjAiLz4KPC9nPgo8ZGVmcz4KPGNsaXBQYXRoIGlkPSJjbGlwMF80MjJfMjM5MzAiPgo8cmVjdCB3aWR0aD0iMzkuMTA4NCIgaGVpZ2h0PSIzOS4xMDg0IiBmaWxsPSJ3aGl0ZSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTMuMDM2MSAxMy4wMzYxKSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo=' },
+            { name: 'sparkle-2', src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzQyMl8yMzkyNSkiPgo8cGF0aCBkPSJNMzQuMjIwMiAxNi4yOTVDMzQuMjIwMiAyNC4zOTQ3IDQwLjc4NjMgMzAuOTYwNyA0OC44ODU5IDMwLjk2MDdIMTA4LjM2M0MxMDkuMjYzIDMwLjk2MDcgMTA5Ljk5MyAzMS42OTAyIDEwOS45OTMgMzIuNTkwMUMxMDkuOTkzIDMzLjQ5IDEwOS4yNjMgMzQuMjE5NSAxMDguMzYzIDM0LjIxOTVINDguODg1OUM0MC43ODYzIDM0LjIxOTUgMzQuMjIwMiA0MC43ODU1IDM0LjIyMDIgNDguODg1MVYxMDguMzYzQzM0LjIyMDIgMTA5LjI2MiAzMy40OTA3IDEwOS45OTIgMzIuNTkwOCAxMDkuOTkyQzMxLjY5MDkgMTA5Ljk5MiAzMC45NjE0IDEwOS4yNjIgMzAuOTYxNCAxMDguMzYzVjQ4Ljg4NTFDMzAuOTYxNCA0MC43ODU1IDI0LjM5NTQgMzQuMjE5NSAxNi4yOTU4IDM0LjIxOTVILTQzLjE4MjZDLTQ0LjA4MjUgMzQuMjE5NSAtNDQuODEyIDMzLjQ5IC00NC44MTIgMzIuNTkwMUMtNDQuODEyIDMxLjY5MDIgLTQ0LjA4MjUgMzAuOTYwNyAtNDMuMTgyNiAzMC45NjA3SDE2LjI5NThDMjQuMzk1NCAzMC45NjA3IDMwLjk2MTQgMjQuMzk0NyAzMC45NjE0IDE2LjI5NVYtNDMuMTgyNEMzMC45NjE0IC00NC4wODIzIDMxLjY5MDkgLTQ0LjgxMTggMzIuNTkwOCAtNDQuODExOEMzMy40OTA3IC00NC44MTE4IDM0LjIyMDIgLTQ0LjA4MjMgMzQuMjIwMiAtNDMuMTgyNFYxNi4yOTVaIiBmaWxsPSIjRUQ5QzUxIi8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfNDIyXzIzOTI1Ij4KPHJlY3Qgd2lkdGg9IjUyLjE0NDYiIGhlaWdodD0iNTIuMTQ0NiIgZmlsbD0id2hpdGUiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDYuNTE3NTggNi41MTgwNykiLz4KPC9jbGlwUGF0aD4KPC9kZWZzPgo8L3N2Zz4K' },
+            { name: 'sparkle-3', src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzQyMl8yMzkyMCkiPgo8cGF0aCBkPSJNMzQuMjIwNyA2LjUxNzkyQzM0LjIyMDcgMjAuMDE3MyA0NS4xNjQxIDMwLjk2MDcgNTguNjYzNSAzMC45NjA3SDEwOC4zNjRDMTA5LjI2NCAzMC45NjA3IDEwOS45OTMgMzEuNjkwMiAxMDkuOTkzIDMyLjU5MDFDMTA5Ljk5MyAzMy40OSAxMDkuMjY0IDM0LjIxOTUgMTA4LjM2NCAzNC4yMTk1SDU4LjY2MzVDNDUuMTY0MSAzNC4yMTk1IDM0LjIyMDcgNDUuMTYyOSAzNC4yMjA3IDU4LjY2MjNWMTA4LjM2M0MzNC4yMjA3IDEwOS4yNjIgMzMuNDkxMiAxMDkuOTkyIDMyLjU5MTMgMTA5Ljk5MkMzMS42OTE0IDEwOS45OTIgMzAuOTYxOSAxMDkuMjYyIDMwLjk2MTkgMTA4LjM2M1Y1OC42NjIzQzMwLjk2MTkgNDUuMTYyOSAyMC4wMTg1IDM0LjIxOTUgNi41MTkxNCAzNC4yMTk1SC00My4xODIxQy00NC4wODIgMzQuMjE5NSAtNDQuODExNSAzMy40OSAtNDQuODExNSAzMi41OTAxQy00NC44MTE1IDMxLjY5MDIgLTQ0LjA4MiAzMC45NjA3IC00My4xODIxIDMwLjk2MDdINi41MTkxNEMyMC4wMTg1IDMwLjk2MDcgMzAuOTYxOSAyMC4wMTczIDMwLjk2MTkgNi41MTc5MlYtNDMuMTgyNEMzMC45NjE5IC00NC4wODIzIDMxLjY5MTQgLTQ0LjgxMTggMzIuNTkxMyAtNDQuODExOEMzMy40OTEyIC00NC44MTE4IDM0LjIyMDcgLTQ0LjA4MjMgMzQuMjIwNyAtNDMuMTgyNFY2LjUxNzkyWiIgZmlsbD0iI0VDOTQ0MSIvPgo8L2c+CjxkZWZzPgo8Y2xpcFBhdGggaWQ9ImNsaXAwXzQyMl8yMzkyMCI+CjxyZWN0IHdpZHRoPSI1OC42NjI3IiBoZWlnaHQ9IjU4LjY2MjciIGZpbGw9IndoaXRlIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzLjI1OTc3IDMuMjU5MDMpIi8+CjwvY2xpcFBhdGg+CjwvZGVmcz4KPC9zdmc+Cg==' },
+            { name: 'sparkle-4', src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzQyMl8yMzkxNCkiPgo8cGF0aCBkPSJNMzQuMjIwNyAtMS42Mjk2N0MzNC4yMjA3IDE2LjM2OTUgNDguODExOSAzMC45NjA3IDY2LjgxMTEgMzAuOTYwN0gxMDguMzY0QzEwOS4yNjQgMzAuOTYwNyAxMDkuOTkzIDMxLjY5MDIgMTA5Ljk5MyAzMi41OTAxQzEwOS45OTMgMzMuNDkgMTA5LjI2NCAzNC4yMTk1IDEwOC4zNjQgMzQuMjE5NUg2Ni44MTExQzQ4LjgxMTkgMzQuMjE5NSAzNC4yMjA3IDQ4LjgxMDcgMzQuMjIwNyA2Ni44MDk4VjEwOC4zNjNDMzQuMjIwNyAxMDkuMjYyIDMzLjQ5MTIgMTA5Ljk5MiAzMi41OTEzIDEwOS45OTJDMzEuNjkxNCAxMDkuOTkyIDMwLjk2MTkgMTA5LjI2MiAzMC45NjE5IDEwOC4zNjNWNjYuODA5OEMzMC45NjE5IDQ4LjgxMDcgMTYuMzcwNyAzNC4yMTk1IC0xLjYyODQ1IDM0LjIxOTVILTQzLjE4MjFDLTQ0LjA4MiAzNC4yMTk1IC00NC44MTE1IDMzLjQ5IC00NC44MTE1IDMyLjU5MDFDLTQ0LjgxMTUgMzEuNjkwMiAtNDQuMDgyIDMwLjk2MDcgLTQzLjE4MjEgMzAuOTYwN0gtMS42Mjg0NUMxNi4zNzA3IDMwLjk2MDcgMzAuOTYxOSAxNi4zNjk1IDMwLjk2MTkgLTEuNjI5NjdWLTQzLjE4MjRDMzAuOTYxOSAtNDQuMDgyMyAzMS42OTE0IC00NC44MTE4IDMyLjU5MTMgLTQ0LjgxMThDMzMuNDkxMiAtNDQuODExOCAzNC4yMjA3IC00NC4wODIzIDM0LjIyMDcgLTQzLjE4MjRWLTEuNjI5NjdaIiBmaWxsPSIjREE3ODU4Ii8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfNDIyXzIzOTE0Ij4KPHJlY3Qgd2lkdGg9IjY1LjE4MDciIGhlaWdodD0iNjUuMTgwNyIgZmlsbD0id2hpdGUiLz4KPC9jbGlwUGF0aD4KPC9kZWZzPgo8L3N2Zz4K' },
+            { name: 'sparkle-5', src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzQyMl8yMzkwNikiPgo8cGF0aCBkPSJNNDMuMTg4MiAwQzQzLjQwMzEgMTIuMDUwOCA1My4xMjk2IDIxLjc3ODEgNjUuMTgwNCAyMS45OTMyVjQyLjM3MjFDNTIuOTk0MiA0Mi41ODk1IDQzLjE4MjUgNTIuNTM1MyA0My4xODI0IDY0Ljc3MzRDNDMuMTgyNCA2NC45MDk0IDQzLjE4NTggNjUuMDQ1MyA0My4xODgyIDY1LjE4MDdIMjIuODA3NEMyMi44MDk4IDY1LjA0NTMgMjIuODEyMyA2NC45MDk0IDIyLjgxMjMgNjQuNzczNEMyMi44MTIxIDUyLjM5OTIgMTIuNzgxMiA0Mi4zNjczIDAuNDA2OTgyIDQyLjM2NzJDMC4yNzA5NDggNDIuMzY3MiAwLjEzNTIxNCA0Mi4zNjk3IC0wLjAwMDI0NDE0MSA0Mi4zNzIxVjIxLjk5MzJDMC4xMzUyMTcgMjEuOTk1NiAwLjI3MDk0NSAyMS45OTggMC40MDY5ODIgMjEuOTk4QzEyLjY0NTIgMjEuOTk3OSAyMi41OTAxIDEyLjE4NjQgMjIuODA3NCAwSDQzLjE4ODJaIiBmaWxsPSIjRDU2NDNGIi8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfNDIyXzIzOTA2Ij4KPHJlY3Qgd2lkdGg9IjY1LjE4MDciIGhlaWdodD0iNjUuMTgwNyIgZmlsbD0id2hpdGUiLz4KPC9jbGlwUGF0aD4KPC9kZWZzPgo8L3N2Zz4K' },
+            { name: 'square',    src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYiIGhlaWdodD0iNjYiIHZpZXdCb3g9IjAgMCA2NiA2NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzQyMl8yMzg5OCkiPgo8cGF0aCBkPSJNNTYuMjI5MiAwQzU2LjQzNjggNC44NTA1NyA2MC4zMjk5IDguNzQzNTcgNjUuMTgwNCA4Ljk1MTE3VjU1LjQxMzFDNjAuMTk0OCA1NS42MjY1IDU2LjIxODYgNTkuNzM1MyA1Ni4yMTg1IDY0Ljc3MzRDNTYuMjE4NSA2NC45MDk4IDU2LjIyMzUgNjUuMDQ1NyA1Ni4yMjkyIDY1LjE4MDdIOS43NjYzNkM5Ljc3MjEzIDY1LjA0NTcgOS43NzYxMiA2NC45MDk4IDkuNzc2MTIgNjQuNzczNEM5Ljc3NjAxIDU5LjU5ODkgNS41ODE1NCA1NS40MDM1IDAuNDA2OTgyIDU1LjQwMzNDMC4yNzA1MjcgNTUuNDAzMyAwLjEzNDc5IDU1LjQwNzMgLTAuMDAwMjQ0MTQxIDU1LjQxMzFWOC45NTExN0MwLjEzNDgxIDguOTU2OTUgMC4yNzA1MDcgOC45NjE5MSAwLjQwNjk4MiA4Ljk2MTkxQzUuNDQ1MSA4Ljk2MTc2IDkuNTUzMDcgNC45ODU2MyA5Ljc2NjM2IDBINTYuMjI5MloiIGZpbGw9IiNENTY0M0YiLz4KPC9nPgo8ZGVmcz4KPGNsaXBQYXRoIGlkPSJjbGlwMF80MjJfMjM4OTgiPgo8cmVjdCB3aWR0aD0iNjUuMTgwNyIgaGVpZ2h0PSI2NS4xODA3IiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo=' },
         ];
 
         const shapes = await Promise.all(defaults.map(({ name, src }) =>
@@ -1368,7 +1432,7 @@ class UIController {
                     resolve({ img, coverage, name });
                 };
                 img.onerror = () => resolve(null);
-                img.src = src;
+                img.src = this._boostSvgDataUri(src);
             })
         ));
 

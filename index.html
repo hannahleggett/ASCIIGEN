@@ -75,7 +75,7 @@
         <div id="asciiOutput" class="ascii-output"></div>
 
         <!-- Dither output canvas -->
-        <canvas id="ditherOutput" class="dither-output hidden"></canvas>
+        <canvas id="ditherOutput" class="dither-output crisp hidden"></canvas>
 
         <!-- Gallery strip (right side, shown after upload) -->
         <div id="galleryStrip" class="gallery-strip hidden">
@@ -391,6 +391,16 @@
                             <span class="toggle-thumb"></span>
                         </span>
                         <span class="ctrl-label">Use Image Color</span>
+                    </label>
+                </div>
+
+                <div class="control-group control-group--toggle glyph-only hidden">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="glyphRetinaCheckbox">
+                        <span class="toggle-track">
+                            <span class="toggle-thumb"></span>
+                        </span>
+                        <span class="ctrl-label">HD Output (2×)</span>
                     </label>
                 </div>
 
