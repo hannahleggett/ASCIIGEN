@@ -878,7 +878,15 @@ input[type="text"].custom-input:focus {
 
     .btn-label { display: none; }
 
-    .mode-btn { padding: 6px 8px; font-size: 0.52rem; }
+    .mode-btn { padding: 10px 8px; font-size: 0.52rem; }
+
+    .bar-btn { padding: 10px 13px; }
+
+    /* Centre upload content in visible area above the bar */
+    .upload-area { padding-bottom: var(--bar-h); }
+
+    /* Larger tap targets for settings panel buttons */
+    .color-mode-btn { padding: 8px 12px; }
 
     /* Hide palette source hint on mobile */
     #paletteHint { display: none; }
@@ -912,8 +920,8 @@ input[type="text"].custom-input:focus {
     }
 
     /* Settings panel: allow more height on shorter screens */
-    .settings-panel { max-height: 55vh; }
-    .settings-inner { max-height: 55vh; }
+    .settings-panel { max-height: 50vh; }
+    .settings-inner { max-height: 50vh; }
 }
 
 @media (max-width: 460px) {
