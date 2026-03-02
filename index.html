@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCIIGEN</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Top nav -->
+    <nav class="nav">
+        <div class="nav-brand">
+            <span class="brand-primary">ASCIIGEN</span>
+        </div>
+        <div class="nav-end">
+            <div id="loadingIndicator" class="loading hidden">
+                <span class="loading-pip"></span>
+                processing
+            </div>
+        </div>
+    </nav>
+
+    <!-- Stage: output fills this space -->
+    <main class="stage">
+
+        <!-- Upload zone (visible when no image) -->
+        <div class="upload-area" id="uploadArea">
+            <input type="file" id="imageInput" accept="image/*" multiple hidden>
+            <div class="upload-options">
+                <label for="imageInput" class="upload-label">
+                    <svg class="upload-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span class="upload-main">Drop image here</span>
+                    <span class="upload-hint">jpg · png · gif</span>
+                    <span class="upload-hint">up to 10 images · 10mb each</span>
+                </label>
+
+                <div class="upload-divider">
+                    <span class="upload-divider-line"></span>
+                    <span class="upload-divider-text">or</span>
+                    <span class="upload-divider-line"></span>
+                </div>
+
+                <button class="upload-default" id="useDefaultBtn">
+                    <img class="upload-default-preview" id="defaultPreviewImg" alt="Default flower image">
+                    <span class="upload-main">Use sample image</span>
+                    <span class="upload-hint">flower · pexels</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ASCII art output -->
+        <div id="asciiOutput" class="ascii-output"></div>
+
+        <!-- Dither output canvas -->
+        <canvas id="ditherOutput" class="dither-output hidden"></canvas>
+
+        <!-- Gallery strip (right side, shown after upload) -->
+        <div id="galleryStrip" class="gallery-strip hidden">
+            <div class="gallery-thumbs" id="galleryThumbs"></div>
+            <button id="galleryAddBtn" class="gallery-add-btn" title="Add image (up to 10)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+            </button>
+            <input type="file" id="galleryInput" accept="image/*" multiple hidden>
+        </div>
+
+    </main>
+
+    <!-- Floating bottom bar -->
+    <div class="bottom-bar" id="controlsSection">
+
+        <!-- Palette dots (centred, populated by JS) -->
+        <div class="bar-palette" id="barPalette"></div>
+
+        <div class="bar-left">
+            <!-- Mode toggle -->
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn active" data-mode="ascii">ASCII</button>
+                <button class="mode-btn" data-mode="dither">DITHER</button>
+                <button class="mode-btn" data-mode="pixel">PIXEL</button>
+                <button class="mode-btn" data-mode="crt">CRT</button>
+                <button class="mode-btn" data-mode="glyph">GLYPH</button>
+            </div>
+
+            <button class="bar-btn settings-btn" id="settingsToggle" aria-expanded="false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span class="btn-label">Settings</span>
+                <svg class="chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="18 15 12 9 6 15"></polyline>
+                </svg>
+            </button>
+        </div>
+
+        <div class="bar-right">
+            <button id="downloadPngBtn" class="bar-btn dl-btn" disabled>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="btn-label">PNG</span>
+            </button>
+            <button id="downloadTxtBtn" class="bar-btn dl-btn" disabled>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                <span class="btn-label">TXT</span>
+            </button>
+            <button id="exportAllBtn" class="bar-btn dl-btn" disabled title="Export all as ZIP">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="btn-label">ZIP</span>
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Settings panel (slides up) -->
+    <div class="settings-panel" id="settingsPanel" aria-hidden="true">
+        <div class="settings-inner">
+
+            <!-- Palette section (shared between modes) -->
+            <div class="palette-section" id="paletteSection">
+                <div class="palette-header">
+                    <span class="ctrl-label">Colour</span>
+                    <div class="color-mode-toggle" id="colorModeToggle">
+                        <button class="color-mode-btn active" data-color-mode="image">Image</button>
+                        <button class="color-mode-btn" data-color-mode="off">Mono</button>
+                        <button class="color-mode-btn" data-color-mode="global">Global</button>
+                    </div>
+                    <span class="palette-hint" id="paletteHint">extracted from image · click to edit</span>
+                    <button class="palette-reset" id="paletteResetBtn" title="Reset to extracted colours" disabled>reset</button>
+                </div>
+                <div class="palette-swatches" id="paletteSwatches">
+                    <div class="palette-empty">upload an image to extract colours</div>
+                </div>
+                <div class="global-color-row hidden" id="globalColorRow">
+                    <input type="color" id="globalColorPicker" value="#e0dbd3">
+                    <span class="global-color-hex" id="globalColorHex">#e0dbd3</span>
+                </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <!-- Glyph shapes section (visible only in glyph mode) -->
+            <div id="glyphSection" class="glyph-section glyph-only hidden">
+                <div class="glyph-section-header">
+                    <span class="ctrl-label">Shapes</span>
+                    <span class="palette-hint">png · transparency recommended</span>
+                    <button class="palette-reset" id="glyphClearBtn" disabled>clear</button>
+                </div>
+                <div class="glyph-dropzone" id="glyphDropZone">
+                    <input type="file" id="glyphInput" accept="image/png,.png" multiple hidden>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span>drop PNG shapes · click to browse</span>
+                </div>
+                <div class="glyph-grid" id="glyphGrid">
+                    <div class="glyph-empty">no shapes loaded · sorted by density automatically</div>
+                </div>
+
+                <!-- Mapping section — shown via JS when shapes exist -->
+                <div id="glyphMappingSection" class="glyph-mapping-section hidden">
+
+                    <div class="glyph-mapping-header">
+                        <span class="ctrl-label">Brightness → Glyph</span>
+                        <button class="palette-reset" id="glyphMappingToggle">manual</button>
+                    </div>
+
+                    <!-- Range sliders (auto mode only) -->
+                    <div id="glyphRangeControls" class="glyph-range-controls">
+                        <div class="glyph-range-row">
+                            <span class="ctrl-label">Start</span>
+                            <input type="range" id="glyphRangeStartSlider" min="1" max="1" value="1">
+                            <span class="ctrl-value" id="glyphRangeStartValue">1</span>
+                        </div>
+                        <div class="glyph-range-row">
+                            <span class="ctrl-label">End</span>
+                            <input type="range" id="glyphRangeEndSlider" min="1" max="1" value="1">
+                            <span class="ctrl-value" id="glyphRangeEndValue">1</span>
+                        </div>
+                    </div>
+
+                    <!-- Strip -->
+                    <div class="glyph-map-wrap">
+                        <div class="glyph-map-strip" id="glyphMapStrip"></div>
+                        <div class="glyph-map-labels">
+                            <span>Dark</span>
+                            <span>Bright</span>
+                        </div>
+                    </div>
+                    <div class="glyph-map-hint" id="glyphMapHint"></div>
+
+                </div>
+
+                <div class="settings-divider" style="margin-top:16px;"></div>
+            </div>
+
+            <div class="settings-grid">
+
+                <!-- ── Shared controls ─────────────────────── -->
+
+                <div class="control-group">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Brightness</span>
+                        <span class="ctrl-value" id="brightnessValue">0</span>
+                    </div>
+                    <input type="range" id="brightnessSlider" min="-100" max="100" value="0" step="1">
+                </div>
+
+                <div class="control-group">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Contrast</span>
+                        <span class="ctrl-value" id="contrastValue">1.0</span>
+                    </div>
+                    <input type="range" id="contrastSlider" min="0.5" max="3" value="1" step="0.1">
+                </div>
+
+                <div class="control-group">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Saturation</span>
+                        <span class="ctrl-value" id="saturationValue">1.0</span>
+                    </div>
+                    <input type="range" id="saturationSlider" min="0" max="2" value="1" step="0.1">
+                </div>
+
+                <!-- ── ASCII-only controls ─────────────────── -->
+
+                <div class="control-group ascii-only">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Density</span>
+                        <span class="ctrl-value" id="densityValue">8</span>
+                    </div>
+                    <input type="range" id="densitySlider" min="1" max="20" value="8" step="1">
+                </div>
+
+                <div class="control-group ascii-only">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Character Set</span>
+                    </div>
+                    <select id="charSetSelect">
+                        <option value="circles">Circles  ●◉○◌·</option>
+                        <option value="classic">Classic  @%#*+=-:.</option>
+                        <option value="blocks">Blocks  █▓▒░</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="text" id="customCharSet" class="custom-input hidden" placeholder="dense → light  e.g. @#*+-:.  ">
+                </div>
+
+                <div class="control-group ascii-only">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Spacing</span>
+                        <span class="ctrl-value" id="spacingValue">0%</span>
+                    </div>
+                    <input type="range" id="spacingSlider" min="0" max="70" value="0" step="5">
+                </div>
+
+                <div class="control-group control-group--toggle ascii-only">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="colorCheckbox" checked>
+                        <span class="toggle-track">
+                            <span class="toggle-thumb"></span>
+                        </span>
+                        <span class="ctrl-label">Preserve Colors</span>
+                    </label>
+                </div>
+
+                <!-- ── Dither-only controls ────────────────── -->
+
+                <div class="control-group dither-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Matrix</span>
+                    </div>
+                    <select id="ditherMatrixSelect">
+                        <option value="2">2×2  (coarse)</option>
+                        <option value="4" selected>4×4  (standard)</option>
+                        <option value="8">8×8  (fine)</option>
+                    </select>
+                </div>
+
+                <div class="control-group dither-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Spread</span>
+                        <span class="ctrl-value" id="ditherSpreadValue">1.0</span>
+                    </div>
+                    <input type="range" id="ditherSpreadSlider" min="0" max="2" value="1" step="0.1">
+                </div>
+
+                <div class="control-group dither-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Base Colour</span>
+                    </div>
+                    <input type="color" id="ditherBaseColor" value="#000000">
+                </div>
+
+                <!-- ── Pixel-only controls ────────────────── -->
+
+                <div class="control-group pixel-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Block Size</span>
+                        <span class="ctrl-value" id="pixelBlockValue">16px</span>
+                    </div>
+                    <input type="range" id="pixelBlockSlider" min="4" max="48" value="16" step="2">
+                </div>
+
+                <div class="control-group pixel-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Threshold</span>
+                        <span class="ctrl-value" id="pixelThresholdValue">45%</span>
+                    </div>
+                    <input type="range" id="pixelThresholdSlider" min="5" max="90" value="45" step="5">
+                </div>
+
+                <!-- ── CRT-only controls ──────────────────── -->
+
+                <div class="control-group crt-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Phosphor Pitch</span>
+                        <span class="ctrl-value" id="crtCellValue">6px</span>
+                    </div>
+                    <input type="range" id="crtCellSlider" min="3" max="14" value="6" step="1">
+                </div>
+
+                <div class="control-group crt-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Glow</span>
+                        <span class="ctrl-value" id="crtGlowValue">40%</span>
+                    </div>
+                    <input type="range" id="crtGlowSlider" min="0" max="100" value="40" step="5">
+                </div>
+
+                <!-- ── Glyph-only controls ────────────────── -->
+
+                <div class="control-group glyph-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Grid Density</span>
+                        <span class="ctrl-value" id="glyphDensityValue">30</span>
+                    </div>
+                    <input type="range" id="glyphDensitySlider" min="5" max="80" value="30" step="1">
+                </div>
+
+                <div class="control-group glyph-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Shape Size</span>
+                        <span class="ctrl-value" id="glyphSizeValue">0.9×</span>
+                    </div>
+                    <input type="range" id="glyphSizeSlider" min="2" max="20" value="9" step="1">
+                </div>
+
+                <div class="control-group control-group--toggle glyph-only hidden">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="glyphColorCheckbox" checked>
+                        <span class="toggle-track">
+                            <span class="toggle-thumb"></span>
+                        </span>
+                        <span class="ctrl-label">Use Image Color</span>
+                    </label>
+                </div>
+
+                <div class="control-group glyph-only hidden">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label">Background Color</span>
+                    </div>
+                    <input type="color" id="glyphBgColor" value="#ffffff">
+                </div>
+
+                <!-- Shared size control — label/behaviour changes per mode, hidden in pixel/crt/glyph -->
+                <div class="control-group" id="sizeControlGroup">
+                    <div class="ctrl-header">
+                        <span class="ctrl-label" id="sizeLabel">Letter Size</span>
+                        <span class="ctrl-value" id="sizeValue">10px</span>
+                    </div>
+                    <input type="range" id="sizeSlider" min="1" max="8" value="3" step="1">
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <canvas id="hiddenCanvas" style="display: none;"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="assets/default-image-data.js"></script>
+    <script src="ascii-generator.js"></script>
+    <script src="ui-controls.js"></script>
+</body>
+</html>
