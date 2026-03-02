@@ -218,18 +218,14 @@ body {
 .upload-options {
     display: flex;
     align-items: stretch;
+    width: 100%;
+    max-width: 900px;
+    padding: 0 32px;
 }
 
 .upload-label,
 .upload-default {
     justify-content: center;
-}
-
-.upload-label {
-    flex: 2;
-}
-
-.upload-default {
     flex: 1;
 }
 
@@ -886,7 +882,7 @@ input[type="text"].custom-input:focus {
     .upload-area { padding-bottom: var(--bar-h); }
 
     /* Larger tap targets for settings panel buttons */
-    .color-mode-btn { padding: 8px 12px; }
+    .color-mode-btn { padding: 10px 12px; }
 
     /* Hide palette source hint on mobile */
     #paletteHint { display: none; }
@@ -936,7 +932,7 @@ input[type="text"].custom-input:focus {
 
     /* Tighter mode buttons for narrow screens */
     .mode-btn {
-        padding: 6px 5px;
+        padding: 8px 8px;
         font-size: 0.48rem;
         letter-spacing: 0.08em;
     }
@@ -962,7 +958,7 @@ input[type="text"].custom-input:focus {
 }
 
 .mode-btn {
-    padding: 6px 11px;
+    padding: 9px 11px;
     background: transparent;
     border: none;
     border-right: 1px solid var(--border-2);
@@ -1071,7 +1067,7 @@ input[type="text"].custom-input:focus {
 }
 
 .color-mode-btn {
-    padding: 3px 9px;
+    padding: 6px 9px;
     background: transparent;
     border: none;
     border-right: 1px solid var(--border-2);
@@ -1149,7 +1145,7 @@ input[type="text"].custom-input:focus {
     font-size: 0.58rem;
     letter-spacing: 0.1em;
     text-transform: lowercase;
-    padding: 3px 9px;
+    padding: 5px 9px;
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
